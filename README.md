@@ -147,4 +147,3 @@ To also remove the Docker volumes (like the client caches), add the `-v` flag:
 ```bash
 docker compose down -v
 ```
-```
