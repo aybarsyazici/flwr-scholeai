@@ -1,0 +1,253 @@
+services:
+  ollama:
+    image: ollama/ollama@sha256:373c16ce3612357e1e5beeb5fa7c1437eefb229cb8bcca7af49328537e025b5f
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - generation_network
+    profiles:
+      - "generate-ollama" # This service only runs with this profile
+    platform: linux/arm64 
+
+  # Service for the Data Generator script. It's part of BOTH generation profiles.
+  data-generator:
+    build:
+      context: . # Build from the root context
+      dockerfile: ./data_generation/Dockerfile
+    env_file: .env
+    command: >
+      sh -c "
+        if [ \"$GENERATION_BACKEND\" = \"ollama\" ]; then
+          echo 'Ollama backend selected. Waiting for server...';
+          while ! curl -s --fail http://ollama:11434/ > /dev/null; do echo -n '.' && sleep 1; done;
+          echo '\nOllama is ready. Pulling model: ${GENERATION_MODEL_NAME}';
+          ollama pull ${GENERATION_MODEL_NAME} && echo 'Model pulled successfully.';
+        else
+          echo 'OpenAI backend selected.';
+        fi;
+        echo 'Running data generation script.';
+        uv run python generate_data.py || echo 'Error: Script failed.';
+      "
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1 # The fix for the "stuck" output
+      - OLLAMA_API_URL=http://ollama:11434/api/generate
+      - GENERATION_MODEL_NAME=${GENERATION_MODEL_NAME:-tinyllama}
+    # This service connects to the generation network IF it's running
+    networks:
+      - generation_network
+    # This service will start if EITHER profile is activated
+    profiles:
+      - "generate-ollama"
+      - "generate-openai"
+    platform: linux/arm64
+
+  # create a SuperLink service
+  superlink:
+    image: flwr/superlink:${FLWR_VERSION:-1.19.0}
+    command:
+      - --insecure
+      - --isolation
+      - process
+    ports:
+      - 9093:9093
+
+  # create a ServerApp service
+  serverapp:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile_inline: |
+        FROM flwr/serverapp:${FLWR_VERSION:-1.19.0}
+
+        # gcc is required for the fastai quickstart example
+        USER root
+        RUN apt-get update \
+            && apt-get -y --no-install-recommends install \
+            build-essential \
+            && rm -rf /var/lib/apt/lists/*
+        USER app
+
+        WORKDIR /app
+        COPY --chown=app:app pyproject.toml .
+        RUN sed -i 's/.*flwr\[simulation\].*//' pyproject.toml \
+          && python -m pip install -U --no-cache-dir .
+
+        ENTRYPOINT ["flwr-serverapp"]
+    command:
+      - --insecure
+      - --serverappio-api-address
+      - superlink:9091
+    restart: on-failure:3
+    depends_on:
+      - superlink
+    env_file:
+      - .env
+    platform: linux/arm64
+
+  # create two SuperNode services with different node configs
+  supernode-1:
+    image: flwr/supernode:${FLWR_VERSION:-1.19.0}
+    command:
+      - --insecure
+      - --superlink
+      - superlink:9092
+      - --clientappio-api-address
+      - 0.0.0.0:9094
+      - --isolation
+      - process
+      - --node-config
+      - "partition-id=0 num-partitions=2"
+    depends_on:
+      - superlink
+
+  supernode-2:
+    image: flwr/supernode:${FLWR_VERSION:-1.19.0}
+    command:
+      - --insecure
+      - --superlink
+      - superlink:9092
+      - --clientappio-api-address
+      - 0.0.0.0:9095
+      - --isolation
+      - process
+      - --node-config
+      - "partition-id=1 num-partitions=2"
+    depends_on:
+      - superlink
+
+  # uncomment to add another SuperNode
+  #
+  # supernode-3:
+  #   image: flwr/supernode:${FLWR_VERSION:-1.19.0}
+  #   command:
+  #     - --insecure
+  #     - --superlink
+  #     - superlink:9092
+  #     - --clientappio-api-address
+  #     - 0.0.0.0:9096
+  #     - --isolation
+  #     - process
+  #     - --node-config
+  #     - "partition-id=1 num-partitions=2"
+  #   depends_on:
+  #     - superlink
+
+  # create two ClientApp services
+  clientapp-1:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile_inline: |
+        FROM flwr/clientapp:${FLWR_VERSION:-1.19.0}
+
+        # gcc is required for the fastai quickstart example
+        USER root
+        RUN apt-get update \
+            && apt-get -y --no-install-recommends install \
+            build-essential \
+            && rm -rf /var/lib/apt/lists/*
+        USER app
+
+        WORKDIR /app
+        COPY --chown=app:app pyproject.toml .
+        RUN sed -i 's/.*flwr\[simulation\].*//' pyproject.toml \
+          && python -m pip install -U --no-cache-dir .
+
+        ENTRYPOINT ["flwr-clientapp"]
+    command:
+      - --insecure
+      - --clientappio-api-address
+      - supernode-1:9094
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+    volumes: ["./data:/app/data:ro", "client_1_cache:/cache"]
+    stop_signal: SIGINT
+    depends_on:
+      - supernode-1
+    env_file:
+      - .env
+    platform: linux/arm64
+
+
+  clientapp-2:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile_inline: |
+        FROM flwr/clientapp:${FLWR_VERSION:-1.19.0}
+
+        # gcc is required for the fastai quickstart example
+        USER root
+        RUN apt-get update \
+            && apt-get -y --no-install-recommends install \
+            build-essential \
+            && rm -rf /var/lib/apt/lists/*
+        USER app
+
+        WORKDIR /app
+        COPY --chown=app:app pyproject.toml .
+        RUN sed -i 's/.*flwr\[simulation\].*//' pyproject.toml \
+          && python -m pip install -U --no-cache-dir .
+
+        ENTRYPOINT ["flwr-clientapp"]
+    command:
+      - --insecure
+      - --clientappio-api-address
+      - supernode-2:9095
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+    volumes: ["./data:/app/data:ro", "client_1_cache:/cache"]
+    stop_signal: SIGINT
+    depends_on:
+      - supernode-2
+    env_file:
+      - .env
+    platform: linux/arm64
+      
+  # uncomment to add another ClientApp
+  #
+  # clientapp-3:
+  #   build:
+  #     context: ${PROJECT_DIR:-.}
+  #     dockerfile_inline: |
+  #       FROM flwr/clientapp:${FLWR_VERSION:-1.19.0}
+
+  #       # gcc is required for the fastai quickstart example
+  #       USER root
+  #       RUN apt-get update \
+  #           && apt-get -y --no-install-recommends install \
+  #           build-essential \
+  #           && rm -rf /var/lib/apt/lists/*
+  #       USER app
+
+  #       WORKDIR /app
+  #       COPY --chown=app:app pyproject.toml .
+  #       RUN sed -i 's/.*flwr\[simulation\].*//' pyproject.toml \
+  #         && python -m pip install -U --no-cache-dir .
+
+  #       ENTRYPOINT ["flwr-clientapp"]
+  #   command:
+  #     - --insecure
+  #     - --clientappio-api-address
+  #     - supernode-3:9096
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "2"
+  #   stop_signal: SIGINT
+  #   depends_on:
+  #     - supernode-3
+
+networks:
+  generation_network: {}
+  fl_network: {}
+
+volumes:
+  ollama_data: {}
+  client_1_cache: {}
+  client_2_cache: {}

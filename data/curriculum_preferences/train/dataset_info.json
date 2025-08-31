@@ -1,0 +1,132 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "chosen": {
+      "company": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "description": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "sections": {
+        "feature": {
+          "description": {
+            "dtype": "string",
+            "_type": "Value"
+          },
+          "order": {
+            "dtype": "int64",
+            "_type": "Value"
+          },
+          "subsections": {
+            "feature": {
+              "description": {
+                "dtype": "string",
+                "_type": "Value"
+              },
+              "estimated_time_min": {
+                "dtype": "int64",
+                "_type": "Value"
+              },
+              "modality": {
+                "dtype": "string",
+                "_type": "Value"
+              },
+              "order": {
+                "dtype": "int64",
+                "_type": "Value"
+              },
+              "title": {
+                "dtype": "string",
+                "_type": "Value"
+              }
+            },
+            "_type": "List"
+          },
+          "title": {
+            "dtype": "string",
+            "_type": "Value"
+          }
+        },
+        "_type": "List"
+      },
+      "time_limit": {
+        "dtype": "int64",
+        "_type": "Value"
+      },
+      "title": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    "rejected": {
+      "company": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "description": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "sections": {
+        "feature": {
+          "description": {
+            "dtype": "string",
+            "_type": "Value"
+          },
+          "order": {
+            "dtype": "int64",
+            "_type": "Value"
+          },
+          "subsections": {
+            "feature": {
+              "description": {
+                "dtype": "string",
+                "_type": "Value"
+              },
+              "estimated_time_min": {
+                "dtype": "int64",
+                "_type": "Value"
+              },
+              "modality": {
+                "dtype": "string",
+                "_type": "Value"
+              },
+              "order": {
+                "dtype": "int64",
+                "_type": "Value"
+              },
+              "title": {
+                "dtype": "string",
+                "_type": "Value"
+              }
+            },
+            "_type": "List"
+          },
+          "title": {
+            "dtype": "string",
+            "_type": "Value"
+          }
+        },
+        "_type": "List"
+      },
+      "time_limit": {
+        "dtype": "int64",
+        "_type": "Value"
+      },
+      "title": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    "prompt": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}
